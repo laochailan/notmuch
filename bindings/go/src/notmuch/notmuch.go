@@ -378,7 +378,7 @@ func (self *Database) CreateQuery(query string) *Query {
 type Sort C.notmuch_sort_t
 
 const (
-	SORT_OLDEST_FIRST Sort = 0
+	SORT_OLDEST_FIRST Sort = iota
 	SORT_NEWEST_FIRST
 	SORT_MESSAGE_ID
 	SORT_UNSORTED
@@ -985,7 +985,7 @@ func (self *Message) GetFileName() string {
 type Flag C.notmuch_message_flag_t
 
 const (
-	MESSAGE_FLAG_MATCH Flag = 0
+	MESSAGE_FLAG_MATCH Flag = iota
 )
 
 // Get a value of a flag for the email corresponding to 'message'.
