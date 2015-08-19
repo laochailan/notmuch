@@ -1264,7 +1264,6 @@ func (self *Message) Thaw() Status {
 // notmuch_message_remove_tag, or notmuch_message_freeze/
 // notmuch_message_thaw). See also notmuch_message_maildir_flags_to_tags
 // for synchronizing maildir flag changes back to tags.
-
 func (self *Message) TagsToMaildirFlags() Status {
 	if self.message == nil {
 		return STATUS_NULL_POINTER
