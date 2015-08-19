@@ -1232,6 +1232,46 @@ func (self *Message) Thaw() Status {
 	return Status(C.notmuch_message_thaw(self.message))
 }
 
+// Rename message filename(s) to encode tags as maildir flags.
+//
+// Specifically, for each filename corresponding to this message:
+//
+// If the filename is not in a maildir directory, do nothing.  (A
+// maildir directory is determined as a directory named "new" or
+// "cur".) Similarly, if the filename has invalid maildir info,
+// (repeated or outof-ASCII-order flag characters after ":2,"), then
+// do nothing.
+//
+// If the filename is in a maildir directory, rename the file so that
+// its filename ends with the sequence ":2," followed by zero or more
+// of the following single-character flags (in ASCII order):
+//
+//   'D' iff the message has the "draft" tag
+//   'F' iff the message has the "flagged" tag
+//   'P' iff the message has the "passed" tag
+//   'R' iff the message has the "replied" tag
+//   'S' iff the message does not have the "unread" tag
+//
+// Any existing flags unmentioned in the list above will be preserved
+// in the renaming.
+//
+// Also, if this filename is in a directory named "new", rename it to
+// be within the neighboring directory named "cur".
+//
+// A client can ensure that maildir filename flags remain synchronized
+// with notmuch database tags by calling this function after changing
+// tags, (after calls to notmuch_message_add_tag,
+// notmuch_message_remove_tag, or notmuch_message_freeze/
+// notmuch_message_thaw). See also notmuch_message_maildir_flags_to_tags
+// for synchronizing maildir flag changes back to tags.
+
+func (self *Message) TagsToMaildirFlags() Status {
+	if self.message == nil {
+		return STATUS_NULL_POINTER
+	}
+	return Status(C.notmuch_message_tags_to_maildir_flags(self.message))
+}
+
 // Destroy a notmuch_message_t object.
 //
 // It can be useful to call this function in the case of a single
