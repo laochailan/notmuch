@@ -50,7 +50,7 @@ window/frame that will be destroyed when the buffer is killed.
 You may want to customize `message-kill-buffer-on-exit'
 accordingly."
    (when (< emacs-major-version 24)
-           " Due to a known bug in Emacs 23, you should not set
+	   " Due to a known bug in Emacs 23, you should not set
 this to `new-window' if `message-kill-buffer-on-exit' is
 disabled: this would result in an incorrect behavior."))
   :group 'notmuch-send
@@ -118,7 +118,10 @@ Note that these functions use `mail-citation-hook' if that is non-nil."
 
 (defun notmuch-mua-user-agent-notmuch ()
   "Generate a `User-Agent:' string suitable for notmuch."
-  (concat "Notmuch/" (notmuch-version) " (http://notmuchmail.org)"))
+  (let ((notmuch-version (if (string= notmuch-emacs-version "unknown")
+			     (notmuch-cli-version)
+			   notmuch-emacs-version)))
+    (concat "Notmuch/" notmuch-version " (http://notmuchmail.org)")))
 
 (defun notmuch-mua-user-agent-emacs ()
   "Generate a `User-Agent:' string suitable for notmuch."
@@ -265,10 +268,46 @@ Note that these functions use `mail-citation-hook' if that is non-nil."
   (message-goto-body)
   (set-buffer-modified-p nil))
 
-(defun notmuch-mua-mail (&optional to subject other-headers &rest other-args)
-  "Invoke the notmuch mail composition window.
+(define-derived-mode notmuch-message-mode message-mode "Message[Notmuch]"
+  "Notmuch message composition mode. Mostly like `message-mode'"
+  (when notmuch-address-command
+    (notmuch-address-setup)))
 
-OTHER-ARGS are passed through to `message-mail'."
+(put 'notmuch-message-mode 'flyspell-mode-predicate 'mail-mode-flyspell-verify)
+
+(define-key notmuch-message-mode-map (kbd "C-c C-c") #'notmuch-mua-send-and-exit)
+(define-key notmuch-message-mode-map (kbd "C-c C-s") #'notmuch-mua-send)
+
+(defun notmuch-mua-pop-to-buffer (name switch-function)
+  "Pop to buffer NAME, and warn if it already exists and is
+modified. This function is notmuch addaptation of
+`message-pop-to-buffer'."
+  (let ((buffer (get-buffer name)))
+    (if (and buffer
+	     (buffer-name buffer))
+	(let ((window (get-buffer-window buffer 0)))
+	  (if window
+	      ;; Raise the frame already displaying the message buffer.
+	      (progn
+		(gnus-select-frame-set-input-focus (window-frame window))
+		(select-window window))
+	    (funcall switch-function buffer)
+	    (set-buffer buffer))
+	  (when (and (buffer-modified-p)
+		     (not (prog1
+			      (y-or-n-p
+			       "Message already being composed; erase? ")
+			    (message nil))))
+	    (error "Message being composed")))
+      (funcall switch-function name)
+      (set-buffer name))
+    (erase-buffer)
+    (notmuch-message-mode)))
+
+(defun notmuch-mua-mail (&optional to subject other-headers continue
+				   switch-function yank-action send-actions
+				   return-action &rest ignored)
+  "Invoke the notmuch mail composition window."
   (interactive)
 
   (when notmuch-mua-user-agent-function
@@ -280,7 +319,27 @@ OTHER-ARGS are passed through to `message-mail'."
     (push (cons 'From (concat
 		       (notmuch-user-name) " <" (notmuch-user-primary-email) ">")) other-headers))
 
-  (apply #'message-mail to subject other-headers other-args)
+  (notmuch-mua-pop-to-buffer (message-buffer-name "mail" to)
+			     (or switch-function (notmuch-mua-get-switch-function)))
+  (let ((headers
+	 (append
+	  ;; The following is copied from `message-mail'
+	  `((To . ,(or to "")) (Subject . ,(or subject "")))
+	  ;; C-h f compose-mail says that headers should be specified as
+	  ;; (string . value); however all the rest of message expects
+	  ;; headers to be symbols, not strings (eg message-header-format-alist).
+	  ;; http://lists.gnu.org/archive/html/emacs-devel/2011-01/msg00337.html
+	  ;; We need to convert any string input, eg from rmail-start-mail.
+	  (dolist (h other-headers other-headers)
+	    (if (stringp (car h)) (setcar h (intern (capitalize (car h))))))))
+	(args (list yank-action send-actions)))
+    ;; message-setup-1 in Emacs 23 does not accept return-action
+    ;; argument. Pass it only if it is supplied by the caller. This
+    ;; will never be the case when we're called by `compose-mail' in
+    ;; Emacs 23.
+    (when return-action (nconc args '(return-action)))
+    (apply 'message-setup-1 headers args))
+  (notmuch-fcc-header-setup)
   (message-sort-headers)
   (message-hide-headers)
   (set-buffer-modified-p nil)
@@ -394,7 +453,13 @@ will be addressed to all recipients of the source message."
 
 (defun notmuch-mua-send-and-exit (&optional arg)
   (interactive "P")
-  (message-send-and-exit arg))
+  (let ((message-fcc-handler-function #'notmuch-fcc-handler))
+    (message-send-and-exit arg)))
+
+(defun notmuch-mua-send (&optional arg)
+  (interactive "P")
+  (let ((message-fcc-handler-function #'notmuch-fcc-handler))
+    (message-send arg)))
 
 (defun notmuch-mua-kill-buffer ()
   (interactive)

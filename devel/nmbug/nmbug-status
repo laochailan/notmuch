@@ -109,9 +109,9 @@ def read_config(path=None, encoding=None):
         status = p.wait()
         if status != 0:
             raise ConfigError(
-                ("Missing status-config.json in branch '{branch}' of"
-                 '{nmbgit}.  Add the file or explicitly set --config.'
-                ).format(branch=branch, nmbgit=nmbhome))
+                ("Missing {filename} in branch '{branch}' of {nmbgit}.  "
+                 'Add the file or explicitly set --config.'
+                ).format(filename=filename, branch=branch, nmbgit=nmbhome))
 
     config_json = config_bytes.decode(encoding)
     try:
@@ -156,11 +156,20 @@ class Page (object):
             stream.write(self.footer)
 
     def _write_view(self, database, view, stream):
+        # sort order, default to oldest-first
+        sort_key = view.get('sort', 'oldest-first')
+        # dynamically accept all values in Query.SORT
+        sort_attribute = sort_key.upper().replace('-', '_')
+        try:
+            sort = getattr(notmuch.Query.SORT, sort_attribute)
+        except AttributeError:
+            raise ConfigError('Invalid sort setting for {}: {!r}'.format(
+                view['title'], sort_key))
         if 'query-string' not in view:
             query = view['query']
             view['query-string'] = ' and '.join(query)
         q = notmuch.Query(database, view['query-string'])
-        q.set_sort(notmuch.Query.SORT.OLDEST_FIRST)
+        q.set_sort(sort)
         threads = self._get_threads(messages=q.search_messages())
         self._write_view_header(view=view, stream=stream)
         self._write_threads(threads=threads, stream=stream)
@@ -309,7 +318,7 @@ args = parser.parse_args()
 try:
     config = read_config(path=args.config)
 except ConfigError as e:
-    print(e)
+    print(e, file=sys.stderr)
     sys.exit(1)
 
 header_template = config['meta'].get('header', '''<!DOCTYPE html>
@@ -318,6 +327,15 @@ header_template = config['meta'].get('header', '''<!DOCTYPE html>
   <meta http-equiv="Content-Type" content="text/html; charset={encoding}" />
   <title>{title}</title>
   <style media="screen" type="text/css">
+    h1 {{
+      font-size: 1.5em;
+    }}
+    h2 {{
+      font-size: 1.17em;
+    }}
+    h3 {{
+      font-size: 100%;
+    }}
     table {{
       border-spacing: 0;
     }}
@@ -358,15 +376,16 @@ header_template = config['meta'].get('header', '''<!DOCTYPE html>
   </style>
 </head>
 <body>
-<h2>{title}</h2>
+<h1>{title}</h1>
+<p>
 {blurb}
 </p>
-<h3>Views</h3>
+<h2>Views</h2>
 ''')
 
 footer_template = config['meta'].get('footer', '''
 <hr>
-<p>Generated: {datetime}
+<p>Generated: {datetime}</p>
 </body>
 </html>
 ''')

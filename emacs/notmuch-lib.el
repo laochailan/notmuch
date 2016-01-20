@@ -25,6 +25,10 @@
 (require 'mm-decode)
 (require 'cl)
 
+(unless (require 'notmuch-version nil t)
+  (defconst notmuch-emacs-version "unknown"
+    "Placeholder variable when notmuch-version.el[c] is not available."))
+
 (autoload 'notmuch-jump-search "notmuch-jump"
   "Jump to a saved search by shortcut key." t)
 
@@ -192,8 +196,8 @@ Otherwise the output will be returned"
 "Perhaps you haven't run \"notmuch setup\" yet? Try running this
 on the command line, and then retry your notmuch command")))
 
-(defun notmuch-version ()
-  "Return a string with the notmuch version number."
+(defun notmuch-cli-version ()
+  "Return a string with the notmuch cli command version number."
   (let ((long-string
 	 ;; Trim off the trailing newline.
 	 (substring (notmuch-command-to-string "--version") 0 -1)))
@@ -228,6 +232,9 @@ on the command line, and then retry your notmuch command")))
   "Return the user.other_email value (as a list) from the notmuch configuration."
   (split-string (notmuch-config-get "user.other_email") "\n" t))
 
+(defun notmuch-user-emails ()
+  (cons (notmuch-user-primary-email) (notmuch-user-other-email)))
+
 (defun notmuch-poll ()
   "Run \"notmuch new\" or an external script to import mail.
 
@@ -236,8 +243,9 @@ depending on the value of `notmuch-poll-script'."
   (interactive)
   (if (stringp notmuch-poll-script)
       (unless (string= notmuch-poll-script "")
-	(call-process notmuch-poll-script nil nil))
-    (call-process notmuch-command nil nil nil "new")))
+	(unless (equal (call-process notmuch-poll-script nil nil) 0)
+	  (error "Notmuch: poll script `%s' failed!" notmuch-poll-script)))
+    (notmuch-call-notmuch-process "new")))
 
 (defun notmuch-bury-or-kill-this-buffer ()
   "Undisplay the current buffer.

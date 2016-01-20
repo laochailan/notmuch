@@ -240,6 +240,8 @@ FUNC."
     ;; Override because we want to close message pane first.
     (define-key map [remap notmuch-mua-new-mail] (notmuch-tree-close-message-pane-and #'notmuch-mua-new-mail))
 
+    (define-key map "S" 'notmuch-search-from-tree-current-query)
+
     ;; these use notmuch-show functions directly
     (define-key map "|" 'notmuch-show-pipe-message)
     (define-key map "w" 'notmuch-show-save-attachments)
@@ -402,6 +404,12 @@ Does NOT change the database."
     (notmuch-tree-close-message-window)
     (notmuch-tree query)))
 
+(defun notmuch-search-from-tree-current-query ()
+  "Call notmuch search with the current query"
+  (interactive)
+  (notmuch-tree-close-message-window)
+  (notmuch-search (notmuch-tree-get-query)))
+
 (defun notmuch-tree-message-window-kill-hook ()
   "Close the message pane when exiting the show buffer."
   (let ((buffer (current-buffer)))
@@ -412,6 +420,13 @@ Does NOT change the database."
       ;; 24. Hence we just ignore-errors.
       (ignore-errors
 	(delete-window notmuch-tree-message-window)))))
+
+(defun notmuch-tree-command-hook ()
+  (when (eq major-mode 'notmuch-tree-mode)
+    ;; We just run the notmuch-show-command-hook on the message pane.
+    (when (buffer-live-p notmuch-tree-message-buffer)
+      (with-current-buffer notmuch-tree-message-buffer
+	(notmuch-show-command-hook)))))
 
 (defun notmuch-tree-show-message-in ()
   "Show the current message (in split-pane)."
@@ -855,10 +870,16 @@ This is is a helper function for notmuch-tree. The arguments are
 the same as for the function notmuch-tree."
   (interactive)
   (notmuch-tree-mode)
+  (add-hook 'post-command-hook #'notmuch-tree-command-hook t t)
   (setq notmuch-tree-basic-query basic-query)
   (setq notmuch-tree-query-context query-context)
   (setq notmuch-tree-target-msg target)
   (setq notmuch-tree-open-target open-target)
+  ;; Set the default value for `notmuch-show-process-crypto' in this
+  ;; buffer. Although we don't use this some of the functions we call
+  ;; (such as reply) do. It is a buffer local variable so setting it
+  ;; will not affect genuine show buffers.
+  (setq notmuch-show-process-crypto notmuch-crypto-process-mime)
 
   (erase-buffer)
   (goto-char (point-min))

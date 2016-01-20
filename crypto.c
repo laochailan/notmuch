@@ -20,18 +20,22 @@
 
 #include "notmuch-client.h"
 
-#ifdef GMIME_ATLEAST_26
-
 /* Create a GPG context (GMime 2.6) */
 static notmuch_crypto_context_t *
-create_gpg_context (const char *gpgpath)
+create_gpg_context (notmuch_crypto_t *crypto)
 {
     notmuch_crypto_context_t *gpgctx;
 
+    if (crypto->gpgctx)
+	return crypto->gpgctx;
+
     /* TODO: GMimePasswordRequestFunc */
-    gpgctx = g_mime_gpg_context_new (NULL, gpgpath ? gpgpath : "gpg");
-    if (! gpgctx)
+    gpgctx = g_mime_gpg_context_new (NULL, crypto->gpgpath ? crypto->gpgpath : "gpg");
+    if (! gpgctx) {
+	fprintf (stderr, "Failed to construct gpg context.\n");
 	return NULL;
+    }
+    crypto->gpgctx = gpgctx;
 
     g_mime_gpg_context_set_use_agent ((GMimeGpgContext *) gpgctx, TRUE);
     g_mime_gpg_context_set_always_trust ((GMimeGpgContext *) gpgctx, FALSE);
@@ -39,28 +43,19 @@ create_gpg_context (const char *gpgpath)
     return gpgctx;
 }
 
-#else /* GMIME_ATLEAST_26 */
-
-/* Create a GPG context (GMime 2.4) */
-static notmuch_crypto_context_t *
-create_gpg_context (const char* gpgpath)
-{
-    GMimeSession *session;
-    notmuch_crypto_context_t *gpgctx;
-
-    session = g_object_new (g_mime_session_get_type (), NULL);
-    gpgctx = g_mime_gpg_context_new (session, gpgpath ? gpgpath : "gpg");
-    g_object_unref (session);
-
-    if (! gpgctx)
-	return NULL;
-
-    g_mime_gpg_context_set_always_trust ((GMimeGpgContext *) gpgctx, FALSE);
-
-    return gpgctx;
-}
-
-#endif /* GMIME_ATLEAST_26 */
+static const struct {
+    const char *protocol;
+    notmuch_crypto_context_t *(*get_context) (notmuch_crypto_t *crypto);
+} protocols[] = {
+    {
+	.protocol = "application/pgp-signature",
+	.get_context = create_gpg_context,
+    },
+    {
+	.protocol = "application/pgp-encrypted",
+	.get_context = create_gpg_context,
+    },
+};
 
 /* for the specified protocol return the context pointer (initializing
  * if needed) */
@@ -68,6 +63,7 @@ notmuch_crypto_context_t *
 notmuch_crypto_get_context (notmuch_crypto_t *crypto, const char *protocol)
 {
     notmuch_crypto_context_t *cryptoctx = NULL;
+    size_t i;
 
     if (! protocol) {
 	fprintf (stderr, "Cryptographic protocol is empty.\n");
@@ -80,19 +76,15 @@ notmuch_crypto_get_context (notmuch_crypto_t *crypto, const char *protocol)
      * parameter names as defined in this document are
      * case-insensitive."  Thus, we use strcasecmp for the protocol.
      */
-    if (strcasecmp (protocol, "application/pgp-signature") == 0 ||
-	strcasecmp (protocol, "application/pgp-encrypted") == 0) {
-	if (! crypto->gpgctx) {
-	    crypto->gpgctx = create_gpg_context (crypto->gpgpath);
-	    if (! crypto->gpgctx)
-		fprintf (stderr, "Failed to construct gpg context.\n");
-	}
-	cryptoctx = crypto->gpgctx;
-    } else {
-	fprintf (stderr, "Unknown or unsupported cryptographic protocol.\n");
+    for (i = 0; i < ARRAY_SIZE (protocols); i++) {
+	if (strcasecmp (protocol, protocols[i].protocol) == 0)
+	    return protocols[i].get_context (crypto);
     }
 
-    return cryptoctx;
+    fprintf (stderr, "Unknown or unsupported cryptographic protocol %s.\n",
+	     protocol);
+
+    return NULL;
 }
 
 int

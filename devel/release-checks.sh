@@ -59,6 +59,17 @@ readonly VERSION
 
 # In the rest of this file, tests collect list of errors to be fixed
 
+echo -n "Checking that git working directory is clean... "
+git_status=`git status --porcelain`
+if [ "$git_status" = '' ]
+then
+	echo Yes.
+else
+	echo No.
+	append_emsg "Git working directory is not clean (git status --porcelain)."
+fi
+unset git_status
+
 verfail ()
 {
 	echo No.
@@ -76,38 +87,6 @@ case $VERSION in
 	*.*)	echo Yes. ;;
 	*)	verfail "'$VERSION' is a single number" ;;
 esac
-
-echo -n "Checking that LIBNOTMUCH version macros & variables match ... "
-# lib/notmuch.h
-LIBNOTMUCH_MAJOR_VERSION=broken
-LIBNOTMUCH_MINOR_VERSION=broken
-LIBNOTMUCH_MICRO_VERSION=broken
-# lib/Makefile.local
-LIBNOTMUCH_VERSION_MAJOR=borken
-LIBNOTMUCH_VERSION_MINOR=borken
-LIBNOTMUCH_VERSION_RELEASE=borken
-
-eval `awk 'NF == 3 && $1 == "#define" && $2 ~ /^LIBNOTMUCH_[A-Z]+_VERSION$/ \
-	&& $3 ~ /^[0-9]+$/ { print $2 "=" $3 }' lib/notmuch.h`
-
-eval `awk 'NF == 3 && $1 ~ /^LIBNOTMUCH_VERSION_[A-Z]+$/ && $2 == "=" \
-	&& $3 ~ /^[0-9]+$/ { print $1 "=" $3 }' lib/Makefile.local`
-
-
-check_version_component ()
-{
-	eval local v1=\$LIBNOTMUCH_$1_VERSION
-	eval local v2=\$LIBNOTMUCH_VERSION_$2
-	if [ $v1 != $v2 ]
-	then	append_emsg "LIBNOTMUCH_$1_VERSION ($v1) does not equal LIBNOTMUCH_VERSION_$2 ($v2)"
-	fi
-}
-
-old_emsg_count=$emsg_count
-check_version_component MAJOR MAJOR
-check_version_component MINOR MINOR
-check_version_component MICRO RELEASE
-[ $old_emsg_count = $emsg_count ] && echo Yes. || echo No.
 
 echo -n "Checking that this is Debian package for notmuch... "
 read deb_notmuch deb_version rest < debian/changelog
@@ -130,7 +109,7 @@ else
 fi
 
 echo -n "Checking that python bindings version is $VERSION... "
-py_version=`python -c "with open('$PV_FILE') as vf: exec(vf.read()); print __VERSION__"`
+py_version=`python -c "with open('$PV_FILE') as vf: exec(vf.read()); print(__VERSION__)"`
 if [ "$py_version" = "$VERSION" ]
 then
 	echo Yes.
@@ -194,6 +173,21 @@ case $news_date in
  *)
 	echo No.
 	append_emsg "Date '$news_date' in NEWS file is not in format (yyyy-mm-dd)"
+esac
+
+year=`exec date +%Y`
+echo -n "Checking that copyright in documentation contains 2009-$year... "
+# Read the value of variable `copyright' defined in 'doc/conf.py'.
+# As __file__ is not defined when python command is given from command line,
+# it is defined before contents of 'doc/conf.py' (which dereferences __file__)
+# is executed.
+copyrightline=`exec python -c "with open('doc/conf.py') as cf: __file__ = ''; exec(cf.read()); print(copyright)"`
+case $copyrightline in
+	*2009-$year*)
+		echo Yes. ;;
+	*)
+		echo No.
+		append_emsg "The copyright in doc/conf.py line '$copyrightline' does not contain '2009-$year'"
 esac
 
 if [ -n "$emsgs" ]
