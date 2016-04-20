@@ -169,6 +169,15 @@ output=$(NOTMUCH_NEW --debug)
 test_expect_equal "$output" "(D) add_files, pass 3: queuing leftover directory ${MAIL_DIR}/two for deletion from database
 No new mail. Removed 3 messages."
 
+test_begin_subtest "One character directory at top level"
+
+generate_message [dir]=A
+generate_message [dir]=A/B
+generate_message [dir]=A/B/C
+
+output=$(NOTMUCH_NEW --debug)
+test_expect_equal "$output" "Added 3 new messages to the database."
+
 test_begin_subtest "Support single-message mbox"
 cat > "${MAIL_DIR}"/mbox_file1 <<EOF
 From test_suite@notmuchmail.org Fri Jan  5 15:43:57 2001
@@ -284,9 +293,9 @@ notmuch config set new.tags $OLDCONFIG
 
 
 test_begin_subtest "Xapian exception: read only files"
-chmod u-w  ${MAIL_DIR}/.notmuch/xapian/*.DB
+chmod u-w  ${MAIL_DIR}/.notmuch/xapian/*.${db_ending}
 output=$(NOTMUCH_NEW --debug 2>&1 | sed 's/: .*$//' )
-chmod u+w  ${MAIL_DIR}/.notmuch/xapian/*.DB
+chmod u+w  ${MAIL_DIR}/.notmuch/xapian/*.${db_ending}
 test_expect_equal "$output" "A Xapian exception occurred opening database"
 
 test_done
