@@ -446,8 +446,9 @@ func (self *Query) GetSort() Sort {
 //
 // If a Xapian exception occurs this function will return NULL.
 func (self *Query) SearchThreads() *Threads {
-	threads := C.notmuch_query_search_threads(self.query)
-	if threads == nil {
+	var threads *C.notmuch_threads_t
+	status := C.notmuch_query_search_threads_st(self.query, &threads)
+	if status != C.NOTMUCH_STATUS_SUCCESS {
 		return nil
 	}
 	return &Threads{threads: threads}
@@ -491,8 +492,9 @@ func (self *Query) SearchThreads() *Threads {
 //
 // If a Xapian exception occurs this function will return NULL.
 func (self *Query) SearchMessages() *Messages {
-	msgs := C.notmuch_query_search_messages(self.query)
-	if msgs == nil {
+	var msgs *C.notmuch_messages_t
+	status := C.notmuch_query_search_messages_st(self.query, &msgs)
+	if status != C.NOTMUCH_STATUS_SUCCESS {
 		return nil
 	}
 	return &Messages{messages: msgs}
@@ -519,7 +521,12 @@ func (self *Query) Destroy() {
 // If a Xapian exception occurs, this function may return 0 (after
 // printing a message).
 func (self *Query) CountMessages() uint {
-	return uint(C.notmuch_query_count_messages(self.query))
+	var count C.uint
+	status := C.notmuch_query_count_messages_st(self.query, &count)
+	if status != C.NOTMUCH_STATUS_SUCCESS {
+		return 0
+	}
+	return uint(count)
 }
 
 // Is the given 'threads' iterator pointing at a valid thread.
